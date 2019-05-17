@@ -32,6 +32,7 @@ namespace NpgsqlSample
     public static class NpgsqlTrigramSearchLinqExtensions
     {
         public static bool FuzzyMatches(this string value, string search) => throw new NotSupportedException();
+        public static double WordSimilarity(this string value, string search) => throw new NotSupportedException();
     }
 
     public class NpgsqlTrigramSearchMethodTranslator : IMethodCallTranslator
@@ -51,25 +52,19 @@ namespace NpgsqlSample
             {
                 case nameof(NpgsqlTrigramSearchLinqExtensions.FuzzyMatches):
                     return new CustomBinaryExpression(methodCallExpression.Arguments[0], methodCallExpression.Arguments[1], "%>", typeof(bool));
+                case nameof(NpgsqlTrigramSearchLinqExtensions.WordSimilarity):
+                    return new CustomBinaryExpression(methodCallExpression.Arguments[0], methodCallExpression.Arguments[1], "<->>", typeof(double));
                 default:
                     return null;
             }
         }
     }
 
-    public class Parent
+    public class Entity
     {
         public int Id { get; set; }
         public string Name { get; set; }
         
-        public ICollection<Child> Children { get; set; }
-    }
-
-    public class Child
-    {
-        public int Id { get; set; }
-        public int ParentId { get; set; }
-        public string Name { get; set; }
     }
 
     public class TestContext : DbContext
@@ -78,7 +73,7 @@ namespace NpgsqlSample
         {
         }
 
-        public DbSet<Parent> Parents { get; set; }
+        public DbSet<Entity> Entities { get; set; }
     }
     
     class Program
@@ -106,16 +101,13 @@ namespace NpgsqlSample
                 var take = 10;
 
                 var context = scope.ServiceProvider.GetRequiredService<TestContext>();
-                var filter = context.Parents
-                    .Where(x => x.Name.FuzzyMatches(search) ||
-                                x.Children.Any(y => y.Name.FuzzyMatches(search)));
-
-                var parents = context.Parents.Where(x => filter
-                        .OrderBy(y => y.Name)
+                var entities = context.Entities.Where(x => context.Entities
+                        .Where(y => y.Name.FuzzyMatches(search))
+                        .OrderBy(y => y.Name.WordSimilarity(search))
                         .Skip(skip)
                         .Take(take)
                         .Select(y => y.Id).Contains(x.Id))
-                    .OrderBy(x => x.Name)
+                    .OrderBy(x => x.Name.WordSimilarity(search))
                     .ToList();
             }
         }
